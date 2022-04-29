@@ -6,8 +6,8 @@ set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
 set(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
 
 # location of the target environment
-set(CMAKE_FIND_ROOT_PATH /home/alex/eldk-mips/mips_4KC
-                          /home/alex/eldk-mips-extra-install )
+#set(CMAKE_FIND_ROOT_PATH /home
+#                         /home)
 
 # adjust the default behavior of the FIND_XXX() commands:
 # search for headers and libraries in the target environment,
