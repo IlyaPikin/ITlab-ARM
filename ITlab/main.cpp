@@ -11,25 +11,25 @@ using namespace std;
 //typedef float float32_t;
 //typedef unsigned int uint32_t;
 
-void matrix_multiply_c(float32_t* A, float32_t* B, float32_t* C, uint32_t n, uint32_t m, uint32_t k) {
-    for (int i_idx = 0; i_idx < n; i_idx++) {
-        for (int j_idx = 0; j_idx < m; j_idx++) {
+void matrix_multiply_c(float32_t* A, float32_t* B, float32_t* C, size_t n, size_t m, size_t k) {
+    for (size_t i_idx = 0; i_idx < n; i_idx++) {
+        for (size_t j_idx = 0; j_idx < m; j_idx++) {
             C[n * j_idx + i_idx] = 0;
-            for (int k_idx = 0; k_idx < k; k_idx++) {
+            for (size_t k_idx = 0; k_idx < k; k_idx++) {
                 C[n * j_idx + i_idx] += A[n * k_idx + i_idx] * B[k * j_idx + k_idx];
             }
         }
     }
 }
-void matrix_multiply_neon(float32_t* A, float32_t* B, float32_t* C, uint32_t n, uint32_t m, uint32_t k) {
+void matrix_multiply_neon(float32_t* A, float32_t* B, float32_t* C, size_t n, size_t m, size_t k) {
     /*
      * Multiply matrices A and B, store the result in C.
      * It is the user's responsibility to make sure the matrices are compatible.
      */
 
-    int A_idx;
-    int B_idx;
-    int C_idx;
+    size_t A_idx;
+    size_t B_idx;
+    size_t C_idx;
 
     // these are the columns of a 4x4 sub matrix of A
     float32x4_t A0;
@@ -49,14 +49,14 @@ void matrix_multiply_neon(float32_t* A, float32_t* B, float32_t* C, uint32_t n, 
     float32x4_t C2;
     float32x4_t C3;
 
-    for (int i_idx = 0; i_idx < n; i_idx += 4) {
-        for (int j_idx = 0; j_idx < m; j_idx += 4) {
+    for (size_t i_idx = 0; i_idx < n; i_idx += 4) {
+        for (size_t j_idx = 0; j_idx < m; j_idx += 4) {
             // Zero accumulators before matrix op
             C0 = vmovq_n_f32(0);
             C1 = vmovq_n_f32(0);
             C2 = vmovq_n_f32(0);
             C3 = vmovq_n_f32(0);
-            for (int k_idx = 0; k_idx < k; k_idx += 4) {
+            for (size_t k_idx = 0; k_idx < k; k_idx += 4) {
                 // Compute base index to 4x4 block
                 A_idx = i_idx + n * k_idx;
                 B_idx = k * j_idx + k_idx;
@@ -102,10 +102,35 @@ void matrix_multiply_neon(float32_t* A, float32_t* B, float32_t* C, uint32_t n, 
     }
 }
 
+bool f32comp_noteq(float32_t a, float32_t b) {
+    if (fabs(a - b) < 0.000001) {
+        return false;
+    }
+    return true;
+}
+
+bool matrix_comp(float32_t* A, float32_t* B, size_t rows, size_t cols) {
+    float32_t a;
+    float32_t b;
+    for (size_t i = 0; i < rows; i++) {
+        for (size_t j = 0; j < cols; j++) {
+            a = A[rows * j + i];
+            b = B[rows * j + i];
+
+            if (f32comp_noteq(a, b)) {
+                printf("i=%d, j=%d, A=%f, B=%f\n", i, j, a, b);
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+
 int main(int argc, char* argv[])
 {
     // Initialization
-    uint32_t n, k, m;
+    size_t n, k, m, n4, k4, m4;
     float32_t l, h;
 
     //cout << "Enter the dimensions of the matrices [n, k, m]:" << endl;
@@ -132,62 +157,107 @@ int main(int argc, char* argv[])
     }
     else { cout << "Wrong number of parameters." << endl; return 0; }
 
-    float32_t* A = new float32_t[n * k];
-    float32_t* B = new float32_t[k * m];
-    float32_t* C = new float32_t[n * m];
-    float32_t* D = new float32_t[n * m];
+    // ƒополнение размеров матриц до размеров, кратных 4
+    n4 = n + (4 - n % 4) % 4;
+    k4 = k + (4 - k % 4) % 4;
+    m4 = m + (4 - m % 4) % 4;
 
-    for (uint32_t i = 0; i < n * k; i++)
+    float32_t* A = new float32_t[n4*k4];
+    float32_t* B = new float32_t[k4*m4];
+    float32_t* C = new float32_t[n4*m4];
+    float32_t* D = new float32_t[n4*m4];
+
+    for (size_t j = 0; j < k4; j++)
     {
-        A[i] = l + static_cast <float32_t> (rand()) / (static_cast <float32_t> (RAND_MAX / (h - l)));
+        for (size_t i = 0; i < n4; i++)
+        {
+            if (i < n && j < k)
+                A[n4 * j + i] = l + static_cast <float32_t> (rand()) / (static_cast <float32_t> (RAND_MAX / (h - l)));
+            else
+                A[n4 * j + i] = 0;
+        
+        }
     }
-    for (uint32_t i = 0; i < n * k; i++)
+    for (size_t j = 0; j < m4; j++)
     {
-        B[i] = l + static_cast <float32_t> (rand()) / (static_cast <float32_t> (RAND_MAX / (h - l)));
+        for (size_t i = 0; i < k4; i++)
+        {
+            if (i < k && j < m)
+                B[k4 * j + i] = l + static_cast <float32_t> (rand()) / (static_cast <float32_t> (RAND_MAX / (h - l)));
+            else
+                B[k4 * j + i] = 0;
+
+        }
     }
 
     // Computing and time clocking
-
-    double start_3for; // time in seconds
-    double end_3for;
-    start_3for = omp_get_wtime();
+    
+    // C time
+    double start_c; // time in seconds
+    double end_c;
+    start_c = omp_get_wtime();
     //... work to be timed ...
-    matrix_multiply_c(A, B, C, n, m, k);
-    end_3for = omp_get_wtime();
-    printf("Time of 3 FOR multiplication:  %f seconds\n", end_3for - start_3for);
+    matrix_multiply_c(A, B, C, n4, m4, k4);
+    end_c = omp_get_wtime();
+    printf("Time of C-code multiplication:  %f seconds\n", end_c - start_c);
 
-    //// Print values
-    //cout << endl;
-    //for (int i = 0; i < n * m; i++)
-    //    cout << A[i] << " ";
-    //cout << endl;
-    //for (int i = 0; i < n * m; i++)
-    //    cout << B[i] << " ";
-    //cout << endl;
-    //for (int i = 0; i < n * m; i++)
-    //    cout << C[i] << " ";
-    //cout << endl;
-
+    // Neon time
     double start_neon; // time in seconds
     double end_neon;
     start_neon = omp_get_wtime();
     //... work to be timed ...
-    matrix_multiply_neon(A, B, D, n, m, k);
+    //matrix_multiply_neon(A, B, D, n4, m4, k4);
     end_neon = omp_get_wtime();
     printf("Time of multiplication with NEON: %f seconds\n", end_neon - start_neon);
 
-    cout << endl;
-    for (int i = 0; i < n * m; i++)
-        if (C[i] != D[i])
+
+    //// Print values
+    if (n < 5 && k < 5 && m < 5)
+    {
+        cout << endl << "Matrix A" << endl;
+        for (uint32_t i = 0; i < n4; i++)
         {
-            cout << "Incorrect calculation"<<endl;
-            delete[] A;
-            delete[] B;
-            delete[] C;
-            delete[] D;
-            return 0;
+            for (uint32_t j = 0; j < k4; j++)
+            {
+                cout << A[n4 * j + i] << " ";
+            }
+            cout << endl;
         }
-    cout << "Correct calculation" << endl;
+        cout << endl << "Matrix B" << endl;
+        for (uint32_t i = 0; i < k4; i++)
+        {
+            for (uint32_t j = 0; j < m4; j++)
+            {
+                cout << B[k4 * j + i] << " ";
+            }
+            cout << endl;
+        }
+        cout << endl << "Matrix C" << endl;
+        for (uint32_t i = 0; i < n4; i++)
+        {
+            for (uint32_t j = 0; j < m4; j++)
+            {
+                cout << C[n4 * j + i] << " ";
+            }
+            cout << endl;
+        }
+        cout << endl << "Matrix D" << endl;
+        for (uint32_t i = 0; i < n4; i++)
+        {
+            for (uint32_t j = 0; j < m4; j++)
+            {
+                cout << D[n4 * j + i] << " ";
+            }
+            cout << endl;
+        }
+    }
+    cout << endl;
+
+    // Comparison
+    if(matrix_comp(C, D, n4, m4))
+        cout << "Correct calculation." << endl;
+    else cout << "Incorrect calculation!" << endl;
+
     delete[] A;
     delete[] B;
     delete[] C;
